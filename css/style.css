@@ -1,0 +1,166 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body, html {
+    height: 100%;
+    font-family: Arial, sans-serif;
+}
+
+#container {
+    display: flex;
+    flex-wrap: wrap;
+    height: 100vh;
+    gap: 20px; /* Separación entre los contenedores */
+}
+
+#mapContainer {
+    flex: 2;
+    background-color: #f0f0f0;
+    position: relative;
+    height: 100%;
+}
+
+#viewDiv {
+    width: 100%;
+    height: 100%;
+}
+
+#chartsContainer {
+    flex: 1;
+    padding: 10px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    height: 100%;
+}
+
+#populationChartContainer,
+#usdChartContainer {
+    flex: 1;
+    margin-bottom: 10px;
+    position: relative;
+}
+
+#populationChart,
+#udsChart {
+    width: 100%;
+    height: auto;
+    aspect-ratio: 2 / 1; /* Mantiene la proporción de las gráficas */
+}
+
+#statsContainer {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-gap: 10px;
+    margin-top: 20px;
+}
+
+.statItem {
+    font-size: 14px;
+    text-align: center;
+    background: #f8f8f8;
+    padding: 8px;
+    border-radius: 5px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+#controls {
+    background-color: rgba(255, 255, 255, 0.8);
+    padding: 15px;
+    border-radius: 8px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    max-width: 300px;
+    width: 100%;
+    min-width: 200px;
+    position: absolute;
+    top: 20px;
+    left: 20px;
+    z-index: 10;
+}
+
+@media (max-width: 1024px) {
+    #container {
+        flex-direction: column;
+    }
+
+    #mapContainer {
+        flex: 1;
+        height: 300px;
+    }
+
+    #chartsContainer {
+        flex: 1;
+        padding: 10px;
+    }
+
+    #populationChartContainer,
+    #usdChartContainer {
+        height: 300px; /* Ajuste de altura para pantallas medianas */
+    }
+
+    #statsContainer {
+        grid-template-columns: 1fr 1fr;
+    }
+
+    .statItem {
+        font-size: 12px;
+    }
+
+    #controls {
+        position: relative;
+        margin-top: 20px;
+        width: 100%;
+    }
+}
+
+@media (max-width: 768px) {
+    #container {
+        flex-direction: column;
+    }
+
+    #mapContainer {
+        flex: 1;
+        height: 200px;
+    }
+
+    #chartsContainer {
+        flex: 1;
+        padding: 5px;
+    }
+
+    #populationChartContainer,
+    #usdChartContainer {
+        height: 200px;
+    }
+
+    #controls {
+        position: absolute; 
+        width: 100%;
+        padding: 10px;
+        margin-top: 20px;
+    }
+
+    #statsContainer {
+        grid-template-columns: repeat(2, 1fr); /* Aquí aseguramos que sea 2x2 en móviles */
+    }
+
+    .statItem {
+        font-size: 12px;
+    }
+}
+
+@media (max-width: 480px) {
+    #statsContainer {
+        grid-template-columns: repeat(2, 1fr); /* Asegura que en pantallas más pequeñas también se mantenga el formato 2x2 */
+    }
+
+    .statItem {
+        font-size: 12px;
+    }
+}

@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+
+    <link rel="stylesheet" href="./css/style.css">
+    
+    <link rel="stylesheet" href="https://js.arcgis.com/4.27/esri/themes/light/main.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://js.arcgis.com/4.27/"></script>
+
+</head>
+
+<body>
+    <div id="controls">
+        <label>
+            <input type="checkbox" id="toggleMunicipios" checked> Mostrar Municipios
+        </label>
+        <label>
+            <input type="checkbox" id="toggleProyectos" checked> Mostrar Proyectos
+        </label>
+
+        <label for="municipioFilter">Selecciona un Municipio: </label>
+        <select id="municipioFilter">
+        </select>
+    </div>
+    <div id="container">
+        <div id="mapContainer">
+            <div id="viewDiv"></div>
+        </div>
+
+        <div id="chartsContainer">
+            <div id="populationChartContainer">
+                <canvas id="populationChart" style="width: 100%; height: 50%;"></canvas>
+            </div>
+
+            <div id="usdChartContainer">
+                <canvas id="udsChart" style="width: 100%; height: 50%;"></canvas>
+            </div>
+
+            <div id="statsContainer">
+                <div class="statItem" >
+                    <div class="statTitle">Total</div>
+                    <div class="statValue" id="totalProjects">0</div>
+                    <small>Proyectos</small>
+                </div>
+                
+                <div class="statItem" >
+                    <div class="statTitle">Unidades</div>
+                    <div class="statValue" id="totalUDSTotals">0</div>
+                    <small>Totales</small>
+                </div>
+                
+                <div class="statItem">
+                    <div class="statTitle">Unidades</div>
+                    <div class="statValue" id="totalUDSAvailable">0</div>
+                    <small>Disponibles</small>
+                </div>
+                
+                <div class="statItem">
+                    <div class="statTitle">Promedio</div>
+                    <div class="statValue" id="averagePricePerUnit">0</div>
+                    <small>$/UD</small>
+                </div>
+            </div>
+        </div>
+    </div>
+
+   
+
+    <script src="./js/script.js"></script>
+</body>
+
+</html>
