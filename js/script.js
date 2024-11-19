@@ -70,14 +70,12 @@ require([
         });
     }
 
+    /* ---- */
     municipalitiesLayer.when(() => console.log("Capa de Municipios cargada."));
     projectsLayer.when(() => console.log("Capa de Proyectos cargada."));
 
 
     const populationChart = createPopulationChart();
-    const chartContainer = document.getElementById('chartContainer');
-    /* view.ui.add(chartContainer, "top-right"); */
-
 
     function createPopulationChart() {
         const ctx = document.getElementById('populationChart').getContext("2d")
@@ -163,6 +161,41 @@ require([
             "POB122", "POB81", "POB123", "POB82"
         ];
     }
+
+
+    async function getMunicipalitiesAndPopulation() {
+        const queryMunicipalities = municipalitiesLayer.createQuery();
+        queryMunicipalities.geometry = view.extent;  // Filtrar por el extent visible
+        queryMunicipalities.outFields = ["NOMGEO", "POB1"];  // Obtener nombre y población
+        queryMunicipalities.returnDistinctValues = true;
+
+        try {
+            const results = await municipalitiesLayer.queryFeatures(queryMunicipalities);
+
+
+            // Calcular totales y extraer datos
+            let totalMunicipalities = 0;
+            let totalPopulation = 0;
+
+
+            results.features.forEach(feature => {
+                totalMunicipalities++;
+                if (feature.attributes.POB1) {
+                    totalPopulation += feature.attributes.POB1;
+                }
+
+            });
+
+            return {
+                totalMunicipalities,
+                totalPopulation,
+            };
+        } catch (error) {
+            console.error("Error al consultar los municipios:", error);
+            return 0;
+        }
+    }
+
 
     const municipalityFilter = document.getElementById("municipioFilter");
 
@@ -281,34 +314,35 @@ require([
 
         if (selectedMunicipality === "Todos") {
             fetchAndRenderChart();
-            fetchAndRenderKPIs(); 
+            fetchAndRenderKPIs();
 
         } else {
             const filteredData = await getProjectsByMunicipality(selectedMunicipality);
             fetchAndRenderChart(filteredData);
-            fetchAndRenderKPIs(filteredData); 
+            fetchAndRenderKPIs(filteredData);
         }
     });
 
     view.watch("extent", function () {
         console.log("Extent del mapa cambiado, actualizando la gráfica...");
+
         fetchAndRenderChart();
         fetchAndRenderKPIs()
     });
 
     async function fetchAndRenderKPIs(filteredData = null) {
         let data = [];
-    
+
         if (filteredData && filteredData.length > 0) {
             data = filteredData;
         } else {
             const queryProyectos = projectsLayer.createQuery();
             queryProyectos.outFields = ["UDS_TOT", "UDS_DISP", "ABS_MES"];
             queryProyectos.returnGeometry = false;
-    
-            queryProyectos.geometry = view.extent; 
-            queryProyectos.spatialRelationship = "intersects"; 
-    
+
+            queryProyectos.geometry = view.extent;
+            queryProyectos.spatialRelationship = "intersects";
+
             try {
                 const results = await projectsLayer.queryFeatures(queryProyectos);
                 data = results.features.map(f => f.attributes);
@@ -316,36 +350,95 @@ require([
                 console.error("Error al consultar los proyectos:", error);
             }
         }
-    
+
         if (data.length === 0) {
             renderKPIs({});
             return;
         }
-    
-        const totalProjects = data.length;
-    
-        const totalUDSTotals = data.reduce((sum, item) => sum + (item.UDS_TOT || 0), 0);
-    
-        const totalUDSAvailable = data.reduce((sum, item) => sum + (item.UDS_DISP || 0), 0);
-    
-        const validData = data.filter(item => item.UDS_TOT > 0 && item.ABS_MES != null);
 
+        renderKPIs(calculateMetrics(data));
+    }
+
+    function calculateMetrics(data) {
+        const totalProjects = data.length;
+        const totalUDSTotals = data.reduce((sum, item) => sum + (item.UDS_TOT || 0), 0);
+        const totalUDSAvailable = data.reduce((sum, item) => sum + (item.UDS_DISP || 0), 0);
+        const validData = data.filter(item => item.UDS_TOT > 0 && item.ABS_MES != null);
         const averagePricePerUnit = validData.reduce((sum, item) => sum + (item.ABS_MES / item.UDS_TOT), 0) / validData.length;
-    
-        renderKPIs({
-            totalProjects,
-            totalUDSTotals,
-            totalUDSAvailable,
-            averagePricePerUnit
-        });
+        return { totalProjects, totalUDSTotals, totalUDSAvailable, averagePricePerUnit };
     }
 
     function renderKPIs({ totalProjects, totalUDSTotals, totalUDSAvailable, averagePricePerUnit }) {
         document.getElementById('totalProjects').innerText = totalProjects;
         document.getElementById('totalUDSTotals').innerText = totalUDSTotals;
         document.getElementById('totalUDSAvailable').innerText = totalUDSAvailable;
-        document.getElementById('averagePricePerUnit').innerText = averagePricePerUnit.toFixed(2); 
+        document.getElementById('averagePricePerUnit').innerText = averagePricePerUnit.toFixed(2);
     }
-    
+
     fetchAndRenderKPIs();
+
+
+    document.getElementById("generatePDF").addEventListener("click", async () => {
+        const kpi = await getMunicipalitiesAndPopulation();
+        const totalMunicipalities = kpi.totalMunicipalities
+        const totalPopulation = kpi.totalPopulation
+
+
+        const { jsPDF } = window.jspdf;
+        const pdf = new jsPDF({
+            orientation: "landscape",
+        });
+
+
+
+        pdf.rect(0, 0, 600, 30, 'F')
+        pdf.setFillColor('#A39667')
+        pdf.rect(0, 30, 600, 5, 'F')
+
+        pdf.setTextColor('#FFFFFF');
+        pdf.setFontSize(32);
+        pdf.text("DIGO", 60, 18);
+
+        pdf.setFontSize(32);
+        pdf.text("PROSPERIA", 185, 18);
+
+        pdf.setTextColor('#000000');
+
+        const screenshot = await view.takeScreenshot({
+            format: "png",
+            width: 1920,
+            height: 1080,
+            quality: 3
+        });
+
+
+
+
+        pdf.addImage(screenshot.dataUrl, "PNG", 0, 40, 148.5, 100);
+
+        const populationChartCanvas = document.getElementById("populationChart");
+        const usdChartCanvas = document.getElementById("udsChart");
+        const populationChartImage = populationChartCanvas.toDataURL("image/png");
+        const usdChartImage = usdChartCanvas.toDataURL("image/png");
+        pdf.addImage(populationChartImage, "PNG", 148.5, 40, 148.5, 60);
+        pdf.addImage(usdChartImage, "PNG", 148.5, 110, 148.5, 60);
+
+
+        pdf.setFontSize(12);
+        pdf.text( 'Cuidades' + '', 10, 150);
+        pdf.text( totalMunicipalities + '', 18, 155);
+
+        pdf.setFontSize(12);
+        pdf.text( 'Población' + '', 60, 150);
+        pdf.text(totalPopulation + '', 62, 155);
+
+        pdf.setFontSize(12);
+
+        typeCity = totalPopulation <= 200000 ? "Ciudad Pequeña" : totalPopulation <= 300000 ? "Ciudad Mediana" : "Ciudad Grande";
+        pdf.text( 'Tipo de cuidad' + '', 100, 150);
+        pdf.text(typeCity, 100, 155);
+
+        pdf.save("mapa.pdf");
+    });
 });
+

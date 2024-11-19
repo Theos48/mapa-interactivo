@@ -9,6 +9,7 @@
     <link rel="stylesheet" href="./css/style.css">
     
     <link rel="stylesheet" href="https://js.arcgis.com/4.27/esri/themes/light/main.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://js.arcgis.com/4.27/"></script>
 
@@ -16,6 +17,7 @@
 
 <body>
     <div id="controls">
+        <button id="generatePDF">generatePDF</button>
         <label>
             <input type="checkbox" id="toggleMunicipios" checked> Mostrar Municipios
         </label>
@@ -69,9 +71,8 @@
         </div>
     </div>
 
-   
-
     <script src="./js/script.js"></script>
+
 </body>
 
 </html>
