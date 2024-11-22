@@ -111,7 +111,6 @@ require([
         });
     }
 
-
     function updateChart(chart, data) {
         chart.data.labels = data.map(item => item.range);
         chart.data.datasets[0].data = data.map(item => item.male);
@@ -162,7 +161,6 @@ require([
         ];
     }
 
-
     async function getMunicipalitiesAndPopulation() {
         const queryMunicipalities = municipalitiesLayer.createQuery();
         queryMunicipalities.geometry = view.extent;  // Filtrar por el extent visible
@@ -171,7 +169,6 @@ require([
 
         try {
             const results = await municipalitiesLayer.queryFeatures(queryMunicipalities);
-
 
             // Calcular totales y extraer datos
             let totalMunicipalities = 0;
@@ -196,9 +193,7 @@ require([
         }
     }
 
-
     const municipalityFilter = document.getElementById("municipioFilter");
-
 
     async function loadMunicipalities() {
         const queryMunicipalities = municipalitiesLayer.createQuery();
@@ -376,7 +371,6 @@ require([
     }
 
     fetchAndRenderKPIs();
-
 
     document.getElementById("generatePDF").addEventListener("click", async () => {
         const kpi = await getMunicipalitiesAndPopulation();
