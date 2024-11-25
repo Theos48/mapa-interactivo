@@ -1,20 +1,100 @@
+const mapConfig = {
+    basemap: "streets-vector",
+    center: [-110.0, 24.0],
+    zoom: 6,
+    containerID: "viewDiv"
+}
+
+const populationRangeKeys = [
+    { range: "0-4", maleField: "POB86", femaleField: "POB44" },
+    { range: "5-9", maleField: "POB109", femaleField: "POB68" },
+    { range: "10-14", maleField: "POB110", femaleField: "POB69" },
+    { range: "15-19", maleField: "POB111", femaleField: "POB70" },
+    { range: "20-24", maleField: "POB112", femaleField: "POB71" },
+    { range: "25-29", maleField: "POB113", femaleField: "POB72" },
+    { range: "30-34", maleField: "POB114", femaleField: "POB73" },
+    { range: "35-39", maleField: "POB115", femaleField: "POB74" },
+    { range: "40-44", maleField: "POB116", femaleField: "POB75" },
+    { range: "45-49", maleField: "POB117", femaleField: "POB76" },
+    { range: "50-54", maleField: "POB118", femaleField: "POB77" },
+    { range: "60-64", maleField: "POB99", femaleField: "POB58" },
+    { range: "65-69", maleField: "POB120", femaleField: "POB79" },
+    { range: "70-74", maleField: "POB121", femaleField: "POB80" },
+    { range: "75-79", maleField: "POB122", femaleField: "POB81" },
+    { range: "80-84", maleField: "POB123", femaleField: "POB82" }
+];
+
+function initializeMap(Map, MapView, config) {
+    const map = new Map({ basemap: config.basemap })
+    const view = new MapView({
+        container: config.containerID,
+        map: map,
+        center: config.center,
+        zoom: config.zoom
+    })
+
+    return { map, view }
+}
+
+function setupLayerVisibility(elementId, layer) {
+    const toggle = document.getElementById(elementId)
+    toggle.addEventListener("change", (event) => {
+        layer.visible = event.target.checked;
+    });
+}
+
+const getProjectsPopupTemplate = () => ({
+    title: "{PROYECTO}",
+    content: [
+        {
+            type: "text",
+            text:"<p><b>Unidades Totales:</b> {UDS_TOT}</p><p><b>Unidades Vendidas:</b> {UDS_VEND}</p>"     
+        },
+        {
+            type: "media",
+            mediaInfos: [
+                {
+                    type: "column-chart",
+                    caption: "Unidades Totales vs. Vendidas",
+                    value: {
+                        fields: ["UDS_TOT", "UDS_VEND"],
+                        normalizeField: null,
+                        tooltipField: "PROYECTO"
+                    }
+                }
+            ]
+        }
+    ]
+})
+
+const createPopulationChartbyAge = () => {
+    const ctx = document.getElementById('populationChart').getContext("2d")
+    return new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: [],
+            datasets: [
+                { label: 'Hombres', data: [], backgroundColor: 'rgba(54, 162, 235, 0.6)' },
+                { label: 'Mujeres', data: [], backgroundColor: 'rgba(255, 99, 132, 0.6)' }
+            ]
+        },
+        options: {
+            responsive: true,
+            scales: {
+                x: { title: { display: true, text: 'Edad' } },
+                y: { title: { display: true, text: 'Población' } }
+            }
+        }
+    });
+}
+
 require([
     "esri/Map",
     "esri/views/MapView",
     "esri/layers/FeatureLayer"
 ], function (Map, MapView, FeatureLayer) {
 
-
-    const map = new Map({
-        basemap: "streets-vector"
-    });
-
-    const view = new MapView({
-        container: "viewDiv",
-        map: map,
-        center: [-110.0, 24.0],
-        zoom: 6
-    });
+    const { map, view } = initializeMap(Map, MapView, mapConfig);
 
     const municipalitiesLayer = new FeatureLayer({
         url: "https://services6.arcgis.com/cdylwBTTDF2F9FTY/ArcGIS/rest/services/BCS/FeatureServer",
@@ -25,88 +105,56 @@ require([
     const projectsLayer = new FeatureLayer({
         url: "https://services6.arcgis.com/cdylwBTTDF2F9FTY/ArcGIS/rest/services/CAPA_PROYECTOS/FeatureServer",
         title: "Proyectos",
-        outFields: ["OBJECTID", "PROYECTO", "UDS_TOT", "UDS_VEND", "ABS_MES"],
+        outFields: ["UDS_TOT", "UDS_VEND",],
         popupTemplate: getProjectsPopupTemplate()
     });
 
-    function getProjectsPopupTemplate() {
-        return {
-            title: "{PROYECTO}",
-            content: [
-                {
-                    type: "text",
-                    text: `
-                        <p><b>Unidades Totales:</b> {UDS_TOT}</p>
-                        <p><b>Unidades Vendidas:</b> {UDS_VEND}</p>
-                    `
-                },
-                {
-                    type: "media",
-                    mediaInfos: [
-                        {
-                            type: "column-chart",
-                            caption: "Unidades Totales vs. Vendidas",
-                            value: {
-                                fields: ["UDS_TOT", "UDS_VEND"],
-                                normalizeField: null,
-                                tooltipField: "PROYECTO"
-                            }
-                        }
-                    ]
-                }
-            ]
+    function createQuery (layer, options = {}){
+        const query = layer.createQuery();
+        if (options.geometry) query.geometry = options.geometry;
+        if (options.where) query.where = options.where;
+        if (options.outFields) query.outFields = options.outFields;
+        if (options.spatialRelationship) query.spatialRelationship = options.spatialRelationship;
+        query.returnGeometry = options.returnGeometry || false;
+        return query;
+    }
+
+    async function executeQuery(layer, query){
+        try {
+            const results = await layer.queryFeatures(query);
+            return results.features;
+        } catch (error){
+            console.error("Error al ejecutar la consulta", error);
         }
-    };
+    }
 
     map.addMany([municipalitiesLayer, projectsLayer]);
 
     setupLayerVisibility("toggleMunicipios", municipalitiesLayer);
     setupLayerVisibility("toggleProyectos", projectsLayer);
 
-    function setupLayerVisibility(elementId, layer) {
-        const toggle = document.getElementById(elementId)
-        toggle.addEventListener("change", (event) => {
-            layer.visible = event.target.checked;
+    const populationChart = createPopulationChartbyAge();
+
+    view.watch("extent", () => queryPopulationData(municipalitiesLayer, view.extent, populationChart));
+
+    async function getPopulationData(layer, extent, outFields = ["*"], processFunction){
+        const query = createQuery(layer, {
+            geometry: extent,
+            outFields: outFields,
         });
+
+        const features = await executeQuery(layer, query);
+        return processFunction(features);
     }
 
-    /* ---- */
-    municipalitiesLayer.when(() => console.log("Capa de Municipios cargada."));
-    projectsLayer.when(() => console.log("Capa de Proyectos cargada."));
-
-
-    const populationChart = createPopulationChart();
-
-    function createPopulationChart() {
-        const ctx = document.getElementById('populationChart').getContext("2d")
-        return new Chart(ctx, {
-            type: 'bar',
-            data: {
-                labels: [],
-                datasets: [
-                    { label: 'Hombres', data: [], backgroundColor: 'rgba(54, 162, 235, 0.6)' },
-                    { label: 'Mujeres', data: [], backgroundColor: 'rgba(255, 99, 132, 0.6)' }
-                ]
-            },
-            options: {
-                responsive: true,
-                scales: {
-                    x: { title: { display: true, text: 'Edad' } },
-                    y: { title: { display: true, text: 'Población' } }
-                }
-            }
-        });
-    }
-
-    view.watch("extent", () => queryPopulationData(municipalitiesLayer, view, populationChart));
-
-    function queryPopulationData(layer, view, chart) {
+    function queryPopulationData(layer, extent, chart) {        
         const query = layer.createQuery();
-        query.geometry = view.extent;
-        query.outFields = getPopulationFields();
+        query.geometry = extent;
+        query.outFields = populationRangeKeys.flatMap(({ maleField, femaleField }) => [maleField, femaleField])
 
         layer.queryFeatures(query).then((results) => {
             const data = processPopulationData(results.features);
+            console.log(data)
             updateChart(chart, data);
         });
     }
@@ -119,26 +167,7 @@ require([
     }
 
     function processPopulationData(features) {
-        const ranges = [
-            { range: "0-4", maleField: "POB86", femaleField: "POB44" },
-            { range: "5-9", maleField: "POB109", femaleField: "POB68" },
-            { range: "10-14", maleField: "POB110", femaleField: "POB69" },
-            { range: "15-19", maleField: "POB111", femaleField: "POB70" },
-            { range: "20-24", maleField: "POB112", femaleField: "POB71" },
-            { range: "25-29", maleField: "POB113", femaleField: "POB72" },
-            { range: "30-34", maleField: "POB114", femaleField: "POB73" },
-            { range: "35-39", maleField: "POB115", femaleField: "POB74" },
-            { range: "40-44", maleField: "POB116", femaleField: "POB75" },
-            { range: "45-49", maleField: "POB117", femaleField: "POB76" },
-            { range: "50-54", maleField: "POB118", femaleField: "POB77" },
-            { range: "60-64", maleField: "POB99", femaleField: "POB58" },
-            { range: "65-69", maleField: "POB120", femaleField: "POB79" },
-            { range: "70-74", maleField: "POB121", femaleField: "POB80" },
-            { range: "75-79", maleField: "POB122", femaleField: "POB81" },
-            { range: "80-84", maleField: "POB123", femaleField: "POB82" }
-        ];
-
-        return ranges.map(range => {
+        return populationRangeKeys.map(range => {
             let maleSum = 0, femaleSum = 0;
             features.forEach(feature => {
                 maleSum += feature.attributes[range.maleField] || 0;
@@ -148,18 +177,6 @@ require([
         });
     }
 
-    function getPopulationFields() {
-        return [
-            "POB86", "POB44", "POB109", "POB68",
-            "POB110", "POB69", "POB111", "POB70",
-            "POB112", "POB71", "POB113", "POB72",
-            "POB114", "POB73", "POB115", "POB74",
-            "POB116", "POB75", "POB117", "POB76",
-            "POB118", "POB77", "POB99", "POB58",
-            "POB120", "POB79", "POB121", "POB80",
-            "POB122", "POB81", "POB123", "POB82"
-        ];
-    }
 
     async function getMunicipalitiesAndPopulation() {
         const queryMunicipalities = municipalitiesLayer.createQuery();
@@ -419,17 +436,17 @@ require([
 
 
         pdf.setFontSize(12);
-        pdf.text( 'Cuidades' + '', 10, 150);
-        pdf.text( totalMunicipalities + '', 18, 155);
+        pdf.text('Cuidades' + '', 10, 150);
+        pdf.text(totalMunicipalities + '', 18, 155);
 
         pdf.setFontSize(12);
-        pdf.text( 'Población' + '', 60, 150);
+        pdf.text('Población' + '', 60, 150);
         pdf.text(totalPopulation + '', 62, 155);
 
         pdf.setFontSize(12);
 
         typeCity = totalPopulation <= 200000 ? "Ciudad Pequeña" : totalPopulation <= 300000 ? "Ciudad Mediana" : "Ciudad Grande";
-        pdf.text( 'Tipo de cuidad' + '', 100, 150);
+        pdf.text('Tipo de cuidad' + '', 100, 150);
         pdf.text(typeCity, 100, 155);
 
         pdf.save("mapa.pdf");
