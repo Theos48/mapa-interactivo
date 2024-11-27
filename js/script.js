@@ -48,7 +48,7 @@ const getProjectsPopupTemplate = () => ({
     content: [
         {
             type: "text",
-            text:"<p><b>Unidades Totales:</b> {UDS_TOT}</p><p><b>Unidades Vendidas:</b> {UDS_VEND}</p>"     
+            text: "<p><b>Unidades Totales:</b> {UDS_TOT}</p><p><b>Unidades Vendidas:</b> {UDS_VEND}</p>"
         },
         {
             type: "media",
@@ -66,6 +66,10 @@ const getProjectsPopupTemplate = () => ({
         }
     ]
 })
+
+const isObjectEmpty = (objectName) => {
+    return Object.keys(objectName).length === 0 && objectName.constructor === Object;
+}
 
 const createPopulationChartbyAge = () => {
     const ctx = document.getElementById('populationChart').getContext("2d")
@@ -86,6 +90,26 @@ const createPopulationChartbyAge = () => {
             }
         }
     });
+}
+
+const createTotalUnitsAndAbsChart = () => {
+    const chartCanvas = document.getElementById('udsChart').getContext('2d');
+    return new Chart(chartCanvas, {
+        type: 'line',
+        data: {
+            labels: [],
+            datasets: [
+                { label: 'Sumatoria de UDS_TOT', data: [], borderColor: 'blue', fill: false },
+                { label: 'Promedio de ABS/MES', data: [], borderColor: 'red', fill: false }
+            ]
+        },
+        options: {
+            scales: {
+                y: { beginAtZero: true, title: { display: true, text: 'Unidades' } }
+            }
+        }
+    });
+
 }
 
 require([
@@ -109,21 +133,22 @@ require([
         popupTemplate: getProjectsPopupTemplate()
     });
 
-    function createQuery (layer, options = {}){
+    function createQuery(layer, options = {}) {
         const query = layer.createQuery();
         if (options.geometry) query.geometry = options.geometry;
         if (options.where) query.where = options.where;
         if (options.outFields) query.outFields = options.outFields;
         if (options.spatialRelationship) query.spatialRelationship = options.spatialRelationship;
+        if (options.returnDistinctValues) query.returnDistinctValues = options.returnDistinctValues;
         query.returnGeometry = options.returnGeometry || false;
         return query;
     }
 
-    async function executeQuery(layer, query){
+    async function executeQuery(layer, query) {
         try {
             const results = await layer.queryFeatures(query);
             return results.features;
-        } catch (error){
+        } catch (error) {
             console.error("Error al ejecutar la consulta", error);
         }
     }
@@ -134,10 +159,16 @@ require([
     setupLayerVisibility("toggleProyectos", projectsLayer);
 
     const populationChart = createPopulationChartbyAge();
+    const totalUnitsAndAbsChart = createTotalUnitsAndAbsChart();
 
-    view.watch("extent", () => queryPopulationData(municipalitiesLayer, view.extent, populationChart));
+    view.watch("extent", async () => {
+        fetchAndRenderChart();
+        fetchAndRenderKPIs()
+        const data = await getPopulationData(municipalitiesLayer, view.extent, ['*'], processPopulationData)
+        updatePopulationChart(populationChart, data);
+    });
 
-    async function getPopulationData(layer, extent, outFields = ["*"], processFunction){
+    async function getPopulationData(layer, extent, outFields = ["*"], processFunction) {
         const query = createQuery(layer, {
             geometry: extent,
             outFields: outFields,
@@ -147,22 +178,29 @@ require([
         return processFunction(features);
     }
 
-    function queryPopulationData(layer, extent, chart) {        
-        const query = layer.createQuery();
-        query.geometry = extent;
-        query.outFields = populationRangeKeys.flatMap(({ maleField, femaleField }) => [maleField, femaleField])
+    async function getTotalUnitsAndAbs(layer, extent, outFields = ['*'], processFunction) {
+        const query = createQuery(layer, {
+            geometry: extent,
+            outFields: outFields,
+            returnGeometry: false,
+            spatialRelationship: "intersects"
+        })
 
-        layer.queryFeatures(query).then((results) => {
-            const data = processPopulationData(results.features);
-            console.log(data)
-            updateChart(chart, data);
-        });
+        const features = await executeQuery(layer, query)
+        return processFunction(features)
     }
 
-    function updateChart(chart, data) {
+    function updatePopulationChart(chart, data) {
         chart.data.labels = data.map(item => item.range);
         chart.data.datasets[0].data = data.map(item => item.male);
         chart.data.datasets[1].data = data.map(item => item.female);
+        chart.update();
+    }
+
+    function updateTotalUnitsChart(chart, data) {
+        chart.data.labels = data.labels;
+        chart.data.datasets[0].data = data.sumUDS
+        chart.data.datasets[1].data = data.avgABS
         chart.update();
     }
 
@@ -176,153 +214,113 @@ require([
             return { range: range.range, male: maleSum, female: femaleSum };
         });
     }
+    function processTotalUnitsAndAbsData(features, isFilter = false) {
 
+        
+        data = isFilter ? features: features.map(f => f.attributes);
+        const sumUDS = [];
+        const avgABS = [];
+        const unitsAvailable = [];
+        const labels = [];
+
+        data.forEach((item, index) => {
+            sumUDS.push(item.UDS_TOT);
+            avgABS.push(item.ABS_MES);
+            unitsAvailable.push(item.UDS_DISP);
+
+            labels.push(index + 1);
+        });
+
+        return { sumUDS: sumUDS, avgABS: avgABS, unitsAvailable: unitsAvailable, labels: labels };
+    }
+
+    function processKpiData(feature) {
+        return feature.map(f => f.attributes);
+    }
 
     async function getMunicipalitiesAndPopulation() {
-        const queryMunicipalities = municipalitiesLayer.createQuery();
-        queryMunicipalities.geometry = view.extent;  // Filtrar por el extent visible
-        queryMunicipalities.outFields = ["NOMGEO", "POB1"];  // Obtener nombre y población
-        queryMunicipalities.returnDistinctValues = true;
+        const query = createQuery(municipalitiesLayer, {
+            geometry: view.extent,
+            outFields: ["NOMGEO", "POB1"],
+            returnDistinctValues: true
+        });
 
-        try {
-            const results = await municipalitiesLayer.queryFeatures(queryMunicipalities);
+        const data = await executeQuery(municipalitiesLayer, query)
 
-            // Calcular totales y extraer datos
-            let totalMunicipalities = 0;
-            let totalPopulation = 0;
+        let totalMunicipalities = data.length;
+        let totalPopulation = 0;
 
-
-            results.features.forEach(feature => {
-                totalMunicipalities++;
-                if (feature.attributes.POB1) {
-                    totalPopulation += feature.attributes.POB1;
-                }
-
-            });
-
-            return {
-                totalMunicipalities,
-                totalPopulation,
-            };
-        } catch (error) {
-            console.error("Error al consultar los municipios:", error);
-            return 0;
+        for (let i = 0; i < totalMunicipalities; i++) {
+            totalPopulation += data[i].attributes.POB1 || 0;
         }
+
+        return { totalMunicipalities, totalPopulation };
     }
 
     const municipalityFilter = document.getElementById("municipioFilter");
 
     async function loadMunicipalities() {
-        const queryMunicipalities = municipalitiesLayer.createQuery();
-        queryMunicipalities.returnDistinctValues = true;
-        queryMunicipalities.outFields = ["NOMGEO"];
+        const query = createQuery(municipalitiesLayer, {
+            outFields: ["NOMGEO"],
+            returnDistinctValues: true
+        })
 
-        try {
-            const results = await municipalitiesLayer.queryFeatures(queryMunicipalities);
-            if (results.features.length > 0) {
-                municipalityFilter.innerHTML = "<option value='Todos'>Todos</option>";
-                results.features.forEach(feature => {
-                    const option = document.createElement("option");
-                    option.value = feature.attributes.NOMGEO;
-                    option.text = feature.attributes.NOMGEO;
-                    municipalityFilter.appendChild(option);
-                });
-            } else {
-                console.log("No se encontraron municipios.");
-            }
-        } catch (error) {
-            console.error("Error al consultar los municipios:", error);
+        const data = await executeQuery(municipalitiesLayer, query);
+
+        if (data.length == 0) {
+            console.log("No se encontraron municipios")
+            return;
         }
+
+        municipalityFilter.innerHTML = "<option value='Todos'>Todos</option>";
+
+        data.forEach(element => {
+            const option = document.createElement("option");
+            option.value = element.attributes.NOMGEO;
+            option.text = element.attributes.NOMGEO;
+            municipalityFilter.appendChild(option);
+        });
     }
 
     loadMunicipalities();
 
-    const usdChartContainer = document.getElementById('usdChartContainer');
-    /* view.ui.add(usdChartContainer, "top-left"); */
+    async function fetchAndRenderChart(filteredData = {}) {
+        let data = isObjectEmpty(filteredData)
+            ? await getTotalUnitsAndAbs(projectsLayer, view.extent, ['UDS_TOT', 'ABS_MES', 'UDS_DISP'], processTotalUnitsAndAbsData)
+            : processTotalUnitsAndAbsData(filteredData, true)
 
-    const chartCanvas = document.getElementById('udsChart').getContext('2d');
-    let chartInstance;
+            console.log(data);
 
-    async function fetchAndRenderChart(filteredData = null) {
-        let data = [];
-
-        // Si hay datos filtrados, usarlos; si no, obtener todos los proyectos
-        if (filteredData && filteredData.length > 0) {
-            data = filteredData;
-        } else {
-            const queryProyectos = projectsLayer.createQuery();
-            queryProyectos.outFields = ["UDS_TOT", "ABS_MES"];
-            queryProyectos.returnGeometry = false;
-
-            // Filtramos por el extent actual de la vista
-            queryProyectos.geometry = view.extent; // Solo los datos dentro del área visible del mapa
-            queryProyectos.spatialRelationship = "intersects"; // Intersección con el extent
-
-            try {
-                const results = await projectsLayer.queryFeatures(queryProyectos);
-                data = results.features.map(f => f.attributes);
-            } catch (error) {
-                console.error("Error al consultar los proyectos:", error);
-            }
-        }
-
-        if (data.length === 0) {
-            renderChart([]);
-            return;
-        }
-
-        const sumUDS = data.map(item => item.UDS_TOT);
-        const avgABS = data.map(item => item.ABS_MES);
-        const labels = data.map((_, index) => index + 1);
-
-        if (chartInstance) chartInstance.destroy();
-
-        chartInstance = new Chart(chartCanvas, {
-            type: 'line',
-            data: {
-                labels,
-                datasets: [
-                    { label: 'Sumatoria de UDS_TOT', data: sumUDS, borderColor: 'blue', fill: false },
-                    { label: 'Promedio de ABS/MES', data: avgABS, borderColor: 'red', fill: false }
-                ]
-            },
-            options: {
-                scales: {
-                    y: { beginAtZero: true, title: { display: true, text: 'Unidades' } }
-                }
-            }
-        });
+        updateTotalUnitsChart(totalUnitsAndAbsChart, data);
     }
 
     async function getProjectsByMunicipality(municipioName) {
-        const municipalityQuery = municipalitiesLayer.createQuery();
-        municipalityQuery.where = `NOMGEO = '${municipioName}'`;
-        municipalityQuery.returnGeometry = true;
+        const query = createQuery(municipalitiesLayer, {
+            where: `NOMGEO = '${municipioName}'`,
+            returnGeometry: true,
+        })
 
-        try {
-            const municipalityResult = await municipalitiesLayer.queryFeatures(municipalityQuery);
-            if (municipalityResult.features.length > 0) {
-                const municipalityGeometry = municipalityResult.features[0].geometry;
-                const projectsQuery = projectsLayer.createQuery();
-                projectsQuery.geometry = municipalityGeometry;
-                projectsQuery.spatialRelationship = "intersects";
-                const filteredProjects = await projectsLayer.queryFeatures(projectsQuery);
-                return filteredProjects.features.map(f => f.attributes);
-            } else {
-                console.log("No se encontraron proyectos para el municipio seleccionado.");
-                return [];
-            }
-        } catch (error) {
-            console.error("Error al filtrar proyectos por municipio:", error);
+
+        const municipalityResult = await executeQuery(municipalitiesLayer, query);
+        if (municipalityResult == 0) {
+            console.log("No se encontraron proyectos para el municipio seleccionado.");
             return [];
         }
-    }
 
-    fetchAndRenderChart();
+        const municipalityGeometry = municipalityResult[0].geometry;
+
+        const queryProyect = createQuery(projectsLayer, {
+            geometry: municipalityGeometry,
+            spatialRelationship: 'intersects'
+        })
+
+        const filteredProjects = await executeQuery(projectsLayer, queryProyect);
+        return filteredProjects.map(f => f.attributes);
+        /* return processTotalUnitsAndAbsData(filteredProjects) */
+    }
 
     municipalityFilter.addEventListener("change", async function () {
         const selectedMunicipality = municipalityFilter.value;
-        console.log("Municipio seleccionado:", selectedMunicipality);
 
         if (selectedMunicipality === "Todos") {
             fetchAndRenderChart();
@@ -335,39 +333,15 @@ require([
         }
     });
 
-    view.watch("extent", function () {
-        console.log("Extent del mapa cambiado, actualizando la gráfica...");
-
-        fetchAndRenderChart();
-        fetchAndRenderKPIs()
-    });
-
-    async function fetchAndRenderKPIs(filteredData = null) {
-        let data = [];
-
-        if (filteredData && filteredData.length > 0) {
-            data = filteredData;
-        } else {
-            const queryProyectos = projectsLayer.createQuery();
-            queryProyectos.outFields = ["UDS_TOT", "UDS_DISP", "ABS_MES"];
-            queryProyectos.returnGeometry = false;
-
-            queryProyectos.geometry = view.extent;
-            queryProyectos.spatialRelationship = "intersects";
-
-            try {
-                const results = await projectsLayer.queryFeatures(queryProyectos);
-                data = results.features.map(f => f.attributes);
-            } catch (error) {
-                console.error("Error al consultar los proyectos:", error);
-            }
-        }
-
+    async function fetchAndRenderKPIs(filteredData = {}) {
+        let data = isObjectEmpty(filteredData)
+            ? await getTotalUnitsAndAbs(projectsLayer, view.extent, ["UDS_TOT", "UDS_DISP", "ABS_MES"], processKpiData)
+            : filteredData; 
+            
         if (data.length === 0) {
-            renderKPIs({});
+            renderKPIs([{}]);
             return;
         }
-
         renderKPIs(calculateMetrics(data));
     }
 
@@ -380,7 +354,7 @@ require([
         return { totalProjects, totalUDSTotals, totalUDSAvailable, averagePricePerUnit };
     }
 
-    function renderKPIs({ totalProjects, totalUDSTotals, totalUDSAvailable, averagePricePerUnit }) {
+    function renderKPIs({ totalProjects, totalUDSTotals, totalUDSAvailable, averagePricePerUnit = 0 }) {
         document.getElementById('totalProjects').innerText = totalProjects;
         document.getElementById('totalUDSTotals').innerText = totalUDSTotals;
         document.getElementById('totalUDSAvailable').innerText = totalUDSAvailable;
