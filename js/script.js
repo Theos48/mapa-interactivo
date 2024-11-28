@@ -112,12 +112,75 @@ const createTotalUnitsAndAbsChart = () => {
 
 }
 
+function updatePopulationChart(chart, data) {
+    chart.data.labels = data.map(item => item.range);
+    chart.data.datasets[0].data = data.map(item => item.male);
+    chart.data.datasets[1].data = data.map(item => item.female);
+    chart.update();
+}
+
+function updateTotalUnitsChart(chart, data) {
+    chart.data.labels = data.labels;
+    chart.data.datasets[0].data = data.sumUDS
+    chart.data.datasets[1].data = data.avgABS
+    chart.update();
+}
+
+function processPopulationData(features) {
+    return populationRangeKeys.map(range => {
+        let maleSum = 0, femaleSum = 0;
+        features.forEach(feature => {
+            maleSum += feature.attributes[range.maleField] || 0;
+            femaleSum += feature.attributes[range.femaleField] || 0;
+        });
+        return { range: range.range, male: maleSum, female: femaleSum };
+    });
+}
+function processTotalUnitsAndAbsData(features, isFilter = false) {
+
+
+    data = isFilter ? features : features.map(f => f.attributes);
+    const sumUDS = [];
+    const avgABS = [];
+    const unitsAvailable = [];
+    const labels = [];
+
+    data.forEach((item, index) => {
+        sumUDS.push(item.UDS_TOT);
+        avgABS.push(item.ABS_MES);
+        unitsAvailable.push(item.UDS_DISP);
+
+        labels.push(index + 1);
+    });
+
+    return { sumUDS: sumUDS, avgABS: avgABS, unitsAvailable: unitsAvailable, labels: labels };
+}
+
+function processKpiData(feature) {
+    return feature.map(f => f.attributes);
+}
+
+function calculateMetrics(data) {
+    const totalProjects = data.length;
+    const totalUDSTotals = data.reduce((sum, item) => sum + (item.UDS_TOT || 0), 0);
+    const totalUDSAvailable = data.reduce((sum, item) => sum + (item.UDS_DISP || 0), 0);
+    const validData = data.filter(item => item.UDS_TOT > 0 && item.ABS_MES != null);
+    const averagePricePerUnit = validData.reduce((sum, item) => sum + (item.ABS_MES / item.UDS_TOT), 0) / validData.length;
+    return { totalProjects, totalUDSTotals, totalUDSAvailable, averagePricePerUnit };
+}
+
+function renderKPIs({ totalProjects, totalUDSTotals, totalUDSAvailable, averagePricePerUnit = 0 }) {
+    document.getElementById('totalProjects').innerText = totalProjects;
+    document.getElementById('totalUDSTotals').innerText = totalUDSTotals;
+    document.getElementById('totalUDSAvailable').innerText = totalUDSAvailable;
+    document.getElementById('averagePricePerUnit').innerText = averagePricePerUnit.toFixed(2);
+}
+
 require([
     "esri/Map",
     "esri/views/MapView",
     "esri/layers/FeatureLayer"
 ], function (Map, MapView, FeatureLayer) {
-
     const { map, view } = initializeMap(Map, MapView, mapConfig);
 
     const municipalitiesLayer = new FeatureLayer({
@@ -190,54 +253,6 @@ require([
         return processFunction(features)
     }
 
-    function updatePopulationChart(chart, data) {
-        chart.data.labels = data.map(item => item.range);
-        chart.data.datasets[0].data = data.map(item => item.male);
-        chart.data.datasets[1].data = data.map(item => item.female);
-        chart.update();
-    }
-
-    function updateTotalUnitsChart(chart, data) {
-        chart.data.labels = data.labels;
-        chart.data.datasets[0].data = data.sumUDS
-        chart.data.datasets[1].data = data.avgABS
-        chart.update();
-    }
-
-    function processPopulationData(features) {
-        return populationRangeKeys.map(range => {
-            let maleSum = 0, femaleSum = 0;
-            features.forEach(feature => {
-                maleSum += feature.attributes[range.maleField] || 0;
-                femaleSum += feature.attributes[range.femaleField] || 0;
-            });
-            return { range: range.range, male: maleSum, female: femaleSum };
-        });
-    }
-    function processTotalUnitsAndAbsData(features, isFilter = false) {
-
-        
-        data = isFilter ? features: features.map(f => f.attributes);
-        const sumUDS = [];
-        const avgABS = [];
-        const unitsAvailable = [];
-        const labels = [];
-
-        data.forEach((item, index) => {
-            sumUDS.push(item.UDS_TOT);
-            avgABS.push(item.ABS_MES);
-            unitsAvailable.push(item.UDS_DISP);
-
-            labels.push(index + 1);
-        });
-
-        return { sumUDS: sumUDS, avgABS: avgABS, unitsAvailable: unitsAvailable, labels: labels };
-    }
-
-    function processKpiData(feature) {
-        return feature.map(f => f.attributes);
-    }
-
     async function getMunicipalitiesAndPopulation() {
         const query = createQuery(municipalitiesLayer, {
             geometry: view.extent,
@@ -289,7 +304,7 @@ require([
             ? await getTotalUnitsAndAbs(projectsLayer, view.extent, ['UDS_TOT', 'ABS_MES', 'UDS_DISP'], processTotalUnitsAndAbsData)
             : processTotalUnitsAndAbsData(filteredData, true)
 
-            console.log(data);
+        console.log(data);
 
         updateTotalUnitsChart(totalUnitsAndAbsChart, data);
     }
@@ -300,23 +315,21 @@ require([
             returnGeometry: true,
         })
 
-
         const municipalityResult = await executeQuery(municipalitiesLayer, query);
+
         if (municipalityResult == 0) {
             console.log("No se encontraron proyectos para el municipio seleccionado.");
             return [];
         }
 
         const municipalityGeometry = municipalityResult[0].geometry;
-
         const queryProyect = createQuery(projectsLayer, {
             geometry: municipalityGeometry,
             spatialRelationship: 'intersects'
         })
-
         const filteredProjects = await executeQuery(projectsLayer, queryProyect);
+
         return filteredProjects.map(f => f.attributes);
-        /* return processTotalUnitsAndAbsData(filteredProjects) */
     }
 
     municipalityFilter.addEventListener("change", async function () {
@@ -336,29 +349,13 @@ require([
     async function fetchAndRenderKPIs(filteredData = {}) {
         let data = isObjectEmpty(filteredData)
             ? await getTotalUnitsAndAbs(projectsLayer, view.extent, ["UDS_TOT", "UDS_DISP", "ABS_MES"], processKpiData)
-            : filteredData; 
-            
+            : filteredData;
+
         if (data.length === 0) {
             renderKPIs([{}]);
             return;
         }
         renderKPIs(calculateMetrics(data));
-    }
-
-    function calculateMetrics(data) {
-        const totalProjects = data.length;
-        const totalUDSTotals = data.reduce((sum, item) => sum + (item.UDS_TOT || 0), 0);
-        const totalUDSAvailable = data.reduce((sum, item) => sum + (item.UDS_DISP || 0), 0);
-        const validData = data.filter(item => item.UDS_TOT > 0 && item.ABS_MES != null);
-        const averagePricePerUnit = validData.reduce((sum, item) => sum + (item.ABS_MES / item.UDS_TOT), 0) / validData.length;
-        return { totalProjects, totalUDSTotals, totalUDSAvailable, averagePricePerUnit };
-    }
-
-    function renderKPIs({ totalProjects, totalUDSTotals, totalUDSAvailable, averagePricePerUnit = 0 }) {
-        document.getElementById('totalProjects').innerText = totalProjects;
-        document.getElementById('totalUDSTotals').innerText = totalUDSTotals;
-        document.getElementById('totalUDSAvailable').innerText = totalUDSAvailable;
-        document.getElementById('averagePricePerUnit').innerText = averagePricePerUnit.toFixed(2);
     }
 
     fetchAndRenderKPIs();
